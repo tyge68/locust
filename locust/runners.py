@@ -651,6 +651,8 @@ class MasterRunner(DistributedRunner):
     def register_client(self, client_id):
         logger.info("Register worker %s", client_id)
         self.clients[client_id] = WorkerNode(client_id, heartbeat_liveness=HEARTBEAT_LIVENESS)
+        logger.info("worker %s, state=%s", client_id, self.clients[client_id].state)
+        logger.info(f"nb worker ready {len(self.clients.ready)}")
         return
 
     def rebalancing_enabled(self) -> bool:
