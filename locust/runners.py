@@ -631,8 +631,8 @@ class MasterRunner(DistributedRunner):
         # listener that gathers info on how many users the worker has spawned
         def on_worker_report(client_id, data):
             if client_id not in self.clients:
-                logger.info("Discarded report from unrecognized worker %s", client_id)
-                return
+                logger.info("Discarded report from unrecognized worker %s, with %s user_classes_count", client_id, data["user_classes_count"])
+                self.register_client(client_id)
             self.clients[client_id].user_classes_count = data["user_classes_count"]
 
         self.environment.events.worker_report.add_listener(on_worker_report)
@@ -642,6 +642,20 @@ class MasterRunner(DistributedRunner):
             self.quit()
 
         self.environment.events.quitting.add_listener(on_quitting)
+
+    def register_client(self, client_id):
+        logger.info("Register worker %s", client_id)
+        self.clients[client_id] = WorkerNode(client_id, heartbeat_liveness=HEARTBEAT_LIVENESS)
+        if self._users_dispatcher is not None:
+            self._users_dispatcher.add_worker(worker_node=self.clients[client_id])
+            if not self._users_dispatcher.dispatch_in_progress and self.state == STATE_RUNNING:
+                # TODO: Test this situation
+                self.start(self.target_user_count, self.spawn_rate)
+        logger.info(
+            "Client %r reported as ready. Currently %i clients ready to swarm."
+            % (client_id, len(self.clients.ready + self.clients.running + self.clients.spawning))
+        )
+        return
 
     def rebalancing_enabled(self) -> bool:
         return self.environment.parsed_options and self.environment.parsed_options.enable_rebalancing
@@ -882,16 +896,7 @@ class MasterRunner(DistributedRunner):
                         f"A worker ({client_id}) running a different version ({msg.data}) connected, master version is {__version__}"
                     )
                 worker_node_id = msg.node_id
-                self.clients[worker_node_id] = WorkerNode(worker_node_id, heartbeat_liveness=HEARTBEAT_LIVENESS)
-                if self._users_dispatcher is not None:
-                    self._users_dispatcher.add_worker(worker_node=self.clients[worker_node_id])
-                    if not self._users_dispatcher.dispatch_in_progress and self.state == STATE_RUNNING:
-                        # TODO: Test this situation
-                        self.start(self.target_user_count, self.spawn_rate)
-                logger.info(
-                    "Client %r reported as ready. Currently %i clients ready to swarm."
-                    % (worker_node_id, len(self.clients.ready + self.clients.running + self.clients.spawning))
-                )
+                self.register_client(worker_node_id)
                 if self.rebalancing_enabled() and self.state == STATE_RUNNING and self.spawning_completed:
                     self.start(self.target_user_count, self.spawn_rate)
                 # emit a warning if the worker's clock seem to be out of sync with our clock
