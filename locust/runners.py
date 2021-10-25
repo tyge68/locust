@@ -631,8 +631,13 @@ class MasterRunner(DistributedRunner):
         # listener that gathers info on how many users the worker has spawned
         def on_worker_report(client_id, data):
             if client_id not in self.clients:
-                logger.info("Discarded report from unrecognized worker %s, with %s user_classes_count", client_id, data["user_classes_count"])
+                logger.info(
+                    "Discarded report from unrecognized worker %s, with %s user_classes_count",
+                    client_id,
+                    data["user_classes_count"],
+                )
                 self.register_client(client_id)
+                return
             self.clients[client_id].user_classes_count = data["user_classes_count"]
 
         self.environment.events.worker_report.add_listener(on_worker_report)
